@@ -1,6 +1,6 @@
 ---
 name: create-visibility-report
-description: 'Use to create an AI Visibility Report for a Shopify store, end to end. Probes everything first — the Mention Network MCP, stored credentials, which collection routes actually work, the storefront catalog, any recent run — then asks the user at most three times, each a click on pre-filled options: one confirm card (shop, product, market, language, route per AI engine, cells/time/cost), one prompt approval, one optional website audit. Accepts a one-line shorthand in several shapes — `cli(chatgpt, claude, gemini) serpapi(google-ai-mode)`, the inverse `chatgpt=cli google_ai_mode=playwright`, or the group form `/create-visibility-report byok kbeautyarabia.com llm=cli ai-mode=playwright` where `llm` covers the three model engines — with every token order-free, misspellings corrected silently, and impossible route/engine pairs repaired instead of rejected. The three model engines (chatgpt / claude / gemini) are collected on the agent lane — the user''s own CLI subscriptions — with API keys as the fallback; google_ai_mode has exactly two routes, Playwright or SerpApi. A logged-in consumer chat UI is never used: its memory and custom instructions personalize the answer and the report would no longer measure what a neutral shopper sees. Collects, analyzes the answers client-side by default (the backend then spends nothing and the report is ready on the first poll), validates, submits, exports the PDF, and hands back the link.'
+description: 'Use to create an AI Visibility Report for a Shopify store, end to end. Probes everything first — the Mention Network MCP, stored credentials, which collection routes actually work, the storefront catalog, any recent run — then asks the user at most three times, each a click on pre-filled options: one confirm card (shop, product, market, language, city (optional, defaults to country-level), route per AI engine, cells/time/cost), one prompt approval, one optional website audit. Accepts a one-line shorthand in several shapes — `cli(chatgpt, claude, gemini) serpapi(google-ai-mode)`, the inverse `chatgpt=cli google_ai_mode=playwright`, or the group form `/create-visibility-report byok kbeautyarabia.com llm=cli ai-mode=playwright` where `llm` covers the three model engines — with every token order-free, misspellings corrected silently, and impossible route/engine pairs repaired instead of rejected. The three model engines (chatgpt / claude / gemini) are collected on the agent lane — the user''s own CLI subscriptions — with API keys as the fallback; google_ai_mode has exactly two routes, Playwright or SerpApi. A logged-in consumer chat UI is never used: its memory and custom instructions personalize the answer and the report would no longer measure what a neutral shopper sees. Collects, analyzes the answers client-side by default (the backend then spends nothing and the report is ready on the first poll), validates, submits, exports the PDF, and hands back the link.'
 requires-mcp: [mention-network]
 ---
 
@@ -224,6 +224,14 @@ block afterwards.
   market measured in English gives a different ranking), with English as the alternative. Again: if
   `lang=` wasn't supplied this is **asked**, never assumed. `get_shop.primaryLocale` is a hint for
   ordering the options; it is frequently `null`, and it describes the *website*, not the shopper.
+- **City** — optional (`locationCity` is nullable on every downstream call), and that's what makes it
+  different from Market/Language: leaving it blank is itself a perfectly good answer, not a decision
+  dodged. So it does **not** get asked, and it does **not** get its own question — it rides inside
+  the Market + language question at Q1 as a third, always-present default: *(Recommended)*
+  country-level (no city), narrowed only if the user types one into that question's free-text answer
+  (e.g. `SA · Arabic · Riyadh`) or the invocation supplied `city=`. Never guess a city from the
+  domain or the shop address — an unsolicited city is a claim about a narrower market than anyone
+  asked for.
 - **Product** — from the storefront catalog, else `list_shop_products`, else seed one or two
   plausible flagship titles for the user to pick. **Never invent one silently.**
   `/products.json` is ordered by the store's own collection sort, **not** by sales — so position 1
@@ -250,6 +258,7 @@ One `AskUserQuestion`. Show the resolved plan first as a compact block, then off
 
 ```
 Shop      kbeautyarabia.com  ·  SA  ·  Arabic
+City      country-level (no city set — optional, say one to narrow the market)
 Product   COSRX Advanced Snail 96 Mucin Power Essence
 Lane      BYOK (your own subscriptions — the backend spends nothing)
 Routes    chatgpt  codex CLI          free      ✓ logged in
@@ -266,7 +275,11 @@ invocation did not supply gets asked; anything it did supply is not.** Compose i
 
 1. **Product** — ask unless `product=` was supplied. Offer 3–4 real titles from the catalog.
 2. **Market + language** — ask unless **both** `country=` and `lang=` were supplied. One question:
-   the market and the language it will be asked in are a single decision.
+   the market and the language it will be asked in are a single decision. **City rides along in this
+   same question and never gets one of its own** — it's optional, so the *(Recommended)* option is
+   always country-level (no city); a user who wants to narrow it types it into the free-text "Other"
+   answer (e.g. `SA · Arabic · Riyadh`). If `city=` was supplied, print it on the card and don't ask
+   about it — same rule as `country=`/`lang=`.
 3. **Routes for the model engines** (`chatgpt` / `claude` / `gemini`) — ask unless the arguments
    pinned them (`engine=route`, `llm=cli`, `route(engine)`). They can mix.
 4. **Route for `google_ai_mode`** — ask unless pinned. Its own question, always.
@@ -310,6 +323,11 @@ runs `! codex login`, you re-probe), so it was never going to fit in the same br
 >
 > Only `product=` / `country=` + `lang=` in the arguments, or `yes` (which skips the whole card),
 > authorise proceeding unasked. Under `yes`, print both values in the plan block marked `(auto)`.
+>
+> **City is the one exception to this rule, on purpose.** Its default — no city, country-level — is
+> not a stand-in for a decision the user should have made; it's a legitimate answer on its own, so
+> defaulting to it silently costs nothing. That's why it never gets asked outright, only offered as
+> the narrowing option inside the Market + language question above.
 
 > ### Never choose a route for the user on your own
 >
@@ -690,11 +708,19 @@ The backend queries the providers on *its* keys; the user supplies nothing but
 2. `get_visibility_report({checkRunId, shopDomain})` → report + `reportId`.
 3. Continue at **P7**.
 
+> **Poll can also land on `status: failed`, not just `done`** — the backend guards against a run
+> that collected zero working answers (#373: report it as failed, don't retry payload-side) — and
+> a `done` run's score still isn't guaranteed complete (partial per-cell collection failures aren't
+> exposed by the status API). See RECOVERY.md → *Submit, poll, export* before presenting the score
+> as final.
+
 ## Snapshots (both lanes)
 
 `shop`: `{ platform:'shopify', externalId, storeUrl, name, primaryDomain?, countryCode?, currency?,
 timezone? }`. `product`: `{ externalProductId, title, handle?, vendor?, productType?, price?,
-currency?, imageUrl? }`. Prefer values from `get_shop` / `list_shop_products` / the storefront
+currency?, imageUrl?, description? }` — send `description` when the catalog gives it; the audit can
+fetch it live from `/products/<handle>.js` if you skip it, but the stored snapshot is what the
+Recent-checks list shows. Prefer values from `get_shop` / `list_shop_products` / the storefront
 catalog; if the store was never checked, build them from what the user gives — a stable `externalId` /
 `externalProductId` suffices for the upsert.
 
@@ -731,6 +757,10 @@ scope by it.
 - [ ] **Product and language were *asked* unless the invocation supplied them** (`product=`,
       `lang=`+`country=`, or `yes`). An inferred market, a local-language default, and a catalog
       pick only ever pre-selected an option — none of them stood in for the user's answer.
+- [ ] **City was shown on the confirm card either way** — supplied via `city=`, typed as the
+      narrowing answer inside the Market + language question, or left at its `(Recommended)`
+      country-level default. It never needed its own question, and it was never guessed from the
+      domain or shop address.
 - [ ] **Every engine whose route the arguments didn't pin was *asked about* at Q1** — the ranking
       only pre-selected an option, it never chose on the user's behalf. `google_ai_mode` got its
       **own** question, offering only `playwright` / `serpapi`.

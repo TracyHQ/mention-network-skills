@@ -145,16 +145,101 @@ export const DEFAULT_TIMEOUT_MS = 180000
 // auto-router (see the header table), so there is nothing verified to declare even if a model
 // string were passed — pinning it would be exactly the kind of unverifiable claim this validator
 // exists to catch, so we deliberately never wire `model` into the codex args.
+// The query an engine actually SENDS to web search is not the shopper's question — measured
+// 2026-08 across 770 responses, models rewrite it (drop the location entirely a third of the
+// time — synonyms like USA/UAE counted as kept, not dropped — and inject
+// incumbent retailer names into 21%). That rewrite is the single strongest observable signal we
+// have for why a merchant is missing from an answer, so the cell has to carry it.
+//
+// Text mode cannot: it only ever shows the final prose. Every CLI here has a structured mode that
+// emits the tool call, and each spells it differently — shapes below were captured from real runs
+// on 2026-08-11, not read off documentation:
+//
+//   codex  --json                 {"type":"item.completed","item":{"type":"web_search","query":…}}
+//   claude --output-format        {"type":"assistant","message":{"content":[
+//          stream-json --verbose     {"type":"tool_use","name":"WebSearch","input":{"query":…}}]}}
+//   gemini --output-format        {"type":"tool_use","tool_name":"google_web_search",
+//          stream-json               "parameters":{"query":…}}
+//
+// All three are converted. Where each keeps the FINAL ANSWER differs too, and gemini is the odd
+// one — see extractCliAnswerText below.
+//
+// Returns the queries RAW: in arrival order, duplicates kept. A model that runs the same query
+// twice really did search twice, and searchRequestCount has to say 2 — the api-lane adapters
+// (claude/gemini) count un-deduped, so deduping here would make the same column mean two different
+// things depending on which lane collected the cell. Dedupe belongs at the storage step
+// (buildResponse), not here.
+export function extractCliSearchQueries(engine, stream) {
+  const out = []
+  for (const ev of parseEvents(stream)) {
+    if (engine === 'chatgpt') {
+      // item.started fires with query:"" before the search resolves — only completed carries it.
+      if (ev.type === 'item.completed' && ev.item?.type === 'web_search' && ev.item.query) out.push(ev.item.query)
+      continue
+    }
+    if (engine === 'claude') {
+      for (const b of ev.message?.content ?? []) {
+        if ((b?.type === 'tool_use' || b?.type === 'server_tool_use') && /^web_?search$/i.test(b.name ?? '') && b.input?.query) out.push(b.input.query)
+      }
+      continue
+    }
+    if (engine === 'gemini') {
+      // Flat event, not nested in a message: tool_name + parameters at the top level.
+      if (ev.type === 'tool_use' && /web_?search/i.test(ev.tool_name ?? '') && ev.parameters?.query) out.push(ev.parameters.query)
+    }
+  }
+  return out
+}
+
+// The finished answer, pulled out of the same stream. Exported so the runners and the tests call
+// the SAME code: a test that re-implements this loop inline passes even after the runner breaks.
+//
+//   codex   last item.completed/agent_message — the FIRST one is the model narrating what it is
+//           about to do, so taking [0] submits a preamble as the answer
+//   claude  one {"type":"result","result":"<text>"} at the end
+//   gemini  no finished-answer event at all (its `result` holds only status/stats): the text is
+//           the assistant `message` chunks joined in arrival order. role must be checked — the
+//           first `message` echoes the USER prompt back, and joining that submits the question
+//           as if it were the answer.
+export function extractCliAnswerText(engine, stream) {
+  let text = ''
+  for (const ev of parseEvents(stream)) {
+    if (engine === 'chatgpt') {
+      if (ev.type === 'item.completed' && ev.item?.type === 'agent_message' && ev.item.text) text = ev.item.text
+    } else if (engine === 'claude') {
+      if (ev.type === 'result' && typeof ev.result === 'string') text = ev.result
+    } else if (engine === 'gemini') {
+      if (ev.type === 'message' && ev.role === 'assistant' && ev.delta && typeof ev.content === 'string') text += ev.content
+    }
+  }
+  return text.trim()
+}
+
+// A killed or timed-out CLI leaves a half-written last line. Dropping it beats throwing away the
+// whole cell over a cosmetic parse error.
+function* parseEvents(stream) {
+  for (const line of String(stream ?? '').split('\n')) {
+    const s = line.trim()
+    if (!s.startsWith('{')) continue
+    try {
+      yield JSON.parse(s)
+    } catch {
+      continue
+    }
+  }
+}
+
 export const ENGINES = {
   chatgpt: {
     platform: 'chatgpt',
     run(prompt, timeoutMs) {
       const instr = `You are a helpful shopping assistant. Use web search to answer this shopper question accurately, then give a concise answer naming specific stores/retailers with their links. Question: ${prompt}`
-      // codex exec streams events to stdout; -o writes only the final message.
-      const tmp = `/tmp/collect-cli-codex-${process.pid}-${Date.now()}.txt`
+      // --json turns stdout into the event stream (it was previously discarded via stdio:'ignore').
+      // The final answer is the LAST item.completed/agent_message — the first one is the model
+      // narrating what it is about to do, so taking [0] would submit a preamble as the answer.
       // project_doc_max_bytes=0 stops codex reading AGENTS.md even if one exists in the cwd.
-      execFileSync('codex', ['exec', '-c', 'tools.web_search=true', '-c', 'project_doc_max_bytes=0', '--skip-git-repo-check', '-s', 'read-only', '-o', tmp, instr], { stdio: ['ignore', 'ignore', 'inherit'], timeout: timeoutMs, cwd: cleanRoom() })
-      return readFileSync(tmp, 'utf8').trim()
+      const stream = execFileSync('codex', ['exec', '--json', '-c', 'tools.web_search=true', '-c', 'project_doc_max_bytes=0', '--skip-git-repo-check', '-s', 'read-only', instr], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024, cwd: cleanRoom() })
+      return { text: extractCliAnswerText('chatgpt', stream), searchQueries: extractCliSearchQueries('chatgpt', stream) }
     },
   },
   claude: {
@@ -174,11 +259,16 @@ export const ENGINES = {
       // LangChain) in this session need authorization" — machine state narrated to the model and
       // submitted as the shopper's own words. Note this is a SEPARATE leak from CLAUDE.md;
       // --setting-sources does not suppress it.
-      const args = ['-p', instr, '--allowedTools', 'WebSearch', '--setting-sources', '', '--strict-mcp-config']
+      //
+      // stream-json (+ --verbose, which it requires) is what exposes the tool call carrying the
+      // rewritten search query. The final answer text stays recoverable: the stream ends with a
+      // single {"type":"result","result":"<text>"} event.
+      const args = ['-p', instr, '--allowedTools', 'WebSearch', '--setting-sources', '', '--strict-mcp-config', '--output-format', 'stream-json', '--verbose']
       // #294: pin the model when the caller named one, so the cell can declare it as a real,
       // checked servedModel instead of an unverifiable guess.
       if (model) args.push('--model', model)
-      return execFileSync('claude', args, { encoding: 'utf8', timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024, env, cwd: cleanRoom() }).trim()
+      const stream = execFileSync('claude', args, { encoding: 'utf8', timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024, env, cwd: cleanRoom() })
+      return { text: extractCliAnswerText('claude', stream), searchQueries: extractCliSearchQueries('claude', stream) }
     },
   },
   gemini: {
@@ -211,9 +301,15 @@ export const ENGINES = {
       // Naming the model here ALSO makes it a real, checked servedModel (#294) — not just a
       // capacity workaround.
       // -o text: final answer only, no event stream to parse back out.
-      const args = ['--skip-trust', '-o', 'text', '-p', instr]
+      // stream-json instead of text, for the same reason as the other two: it is the only mode
+      // that shows the rewritten search query. Unlike claude/codex, gemini has NO event carrying
+      // the finished answer — its `type:"result"` holds only status/stats — so the text is the
+      // assistant `message` chunks concatenated in arrival order. They are explicitly flagged
+      // `delta:true`, so this is a plain join, not a guess at which event is final.
+      const args = ['--skip-trust', '-o', 'stream-json', '-p', instr]
       if (model) args.push('-m', model)
-      return execFileSync('gemini', args, { encoding: 'utf8', timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024, cwd: cleanRoom() }).trim()
+      const stream = execFileSync('gemini', args, { encoding: 'utf8', timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024, cwd: cleanRoom() })
+      return { text: extractCliAnswerText('gemini', stream), searchQueries: extractCliSearchQueries('gemini', stream) }
     },
   },
 }
@@ -264,7 +360,7 @@ export function collectionMethodFor(response) {
   return response.servedModel ? 'cli' : 'browser'
 }
 
-export function buildResponse(rawText, engine, model = null) {
+export function buildResponse(rawText, engine, model = null, searchQueries = null) {
   const citations = extractCitations(rawText)
   return {
     rawText,
@@ -275,8 +371,15 @@ export function buildResponse(rawText, engine, model = null) {
     externalResponseId: null,
     webSearchUsed: true, // we passed the web-search flag; the CLI ran it
     citations,
-    searchQueries: null,
-    searchRequestCount: null,
+    // Empty array ⇒ the stream was read and the model genuinely ran no search; null ⇒ this engine
+    // still runs in text mode so we never had the chance to look. Collapsing both to null would
+    // hide which of the two it is, and that is exactly the distinction the report needs.
+    //
+    // Count comes from the RAW list, the stored list is deduped: repeating a query is two real
+    // searches, and the api-lane adapters count un-deduped — deduping the count here would make
+    // the same column mean different things depending on which lane collected the cell.
+    searchQueries: searchQueries?.length ? [...new Set(searchQueries)] : null,
+    searchRequestCount: searchQueries ? searchQueries.length : null,
     usage: { inputTokens: null, outputTokens: null, cachedInputTokens: null, reasoningTokens: null },
     costUsd: null, // subscription, not per-token
     providerMeta: { via: 'vendor-cli', engine },
@@ -292,17 +395,22 @@ export async function main(argv, env = process.env) {
   if (!prompt.trim()) throw new Error('empty prompt (pass --prompt, --prompt-file, or pipe via stdin)')
 
   const timeoutMs = a.timeoutMs ?? spec.defaultTimeoutMs ?? DEFAULT_TIMEOUT_MS
-  let rawText
+  let result
   try {
-    rawText = spec.run(prompt, timeoutMs, a.model)
+    result = spec.run(prompt, timeoutMs, a.model)
   } catch (e) {
     throw new Error(`${a.engine} CLI failed: ${describeCliFailure(e, a.engine, timeoutMs)}`)
   }
+  // A runner returns {text, searchQueries} once converted to structured output; the ones still on
+  // plain text return a bare string. Normalising here keeps both shapes working during the switch
+  // instead of forcing every engine over in one commit.
+  const rawText = typeof result === 'string' ? result : result?.text
+  const searchQueries = typeof result === 'string' ? null : (result?.searchQueries ?? null)
   if (!rawText) throw new Error(`${a.engine} CLI returned no answer text`)
   // chatgpt/codex has no controllable model (auto-router) — never claim one even if --model was
   // passed by mistake, so it always falls back to the unchecked 'browser' lane.
   const model = a.engine === 'chatgpt' ? null : a.model
-  const response = buildResponse(rawText, a.engine, model)
+  const response = buildResponse(rawText, a.engine, model, searchQueries)
   if (response.citations.length === 0 && rawText.length < 200) {
     process.stderr.write(`warning: ${a.engine} answer is short with 0 citations — verify web search actually ran before submitting\n`)
   }

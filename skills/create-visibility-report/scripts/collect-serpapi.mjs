@@ -50,12 +50,30 @@ export function blocksToText(blocks) {
   return parts.join('\n\n').trim()
 }
 
+// SerpAPI's google_ai_mode đôi khi tự trả 2-3 đoạn LẶP Y HỆT liên tiếp nhau —
+// verified 2026-08-05 (report "Seasons Skate Shop"/Nike SB Dunk): cùng bị cả
+// ở text_blocks lẫn reconstructed_markdown, tức lỗi nằm ở phía SerpAPI, không
+// phải cách mình đọc. Bỏ đoạn trùng đoạn liền trước (so theo khối cách nhau
+// bởi dòng trống) trước khi coi đây là "nguồn" cho report.
+function dedupeConsecutiveParagraphs(text) {
+  const paras = text.split(/\n\s*\n/)
+  const out = []
+  let prev = null
+  for (const p of paras) {
+    const t = p.trim()
+    if (t !== '' && t === prev) continue
+    out.push(p)
+    prev = t
+  }
+  return out.join('\n\n')
+}
+
 export function parseSerpApi(body, params = {}) {
   if (body.error) throw new Error(`SerpApi: ${body.error}`)
   const status = body.search_metadata?.status
   if (status && status !== 'Success') throw new Error(`SerpApi status: ${status}`)
   const md = typeof body.reconstructed_markdown === 'string' ? body.reconstructed_markdown.trim() : ''
-  const rawText = md || blocksToText(body.text_blocks)
+  const rawText = dedupeConsecutiveParagraphs(md || blocksToText(body.text_blocks))
   const citations = dedupeCitations(
     (body.references || []).map((r) => toCitation(r.link, r.title)).filter(Boolean),
   )

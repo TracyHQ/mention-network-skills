@@ -120,7 +120,7 @@ genuinely cannot resolve becomes a note.
 |---|---|---|
 | `country=` | ISO-2, e.g. `SA` | **Asked at Q1**, together with `lang=`. A domain-based guess (`…arabia.com` → SA) only orders the options — it never stands in for the answer. |
 | `lang=` | ISO code, e.g. `ar` | **Asked at Q1** — never assumed. The market's local language leads the options (a non-English market measured in English ranks differently), then English. `get_shop.primaryLocale` only hints at the ordering, and is often `null`. |
-| `city=` | free text, e.g. `Riyadh` | Omitted — optional in the payload. |
+| `city=` | free text, e.g. `Riyadh` | **Never asked as its own question.** Omitted → defaults to country-level (no city) on the confirm card. In a guided run it can still be set without shorthand — it rides inside the Market + language question at Q1 as a free-text narrowing answer. |
 | `product=` | quoted title, or an `externalProductId` | **Asked at Q1** — 3–4 real titles from the catalog as options. Never invented, and never silently taken from position 1 (`/products.json` is collection-sorted, not sales-sorted). |
 | `intents=` | comma list of intent slugs | Whatever `describe_check_grid`'s `intents` field returns as the default set. **Every declared intent must then be collected on all 4 engines** — the backend rejects a short grid (`INCOMPLETE_INTENT_GRID`), so this narrows the *question set*, never the engines. `where_to_buy` is always kept. |
 | `audit=` | `yes` \| `no` | Ask at Q3. `audit=yes` runs it without asking; `audit=no` skips Q3. |
