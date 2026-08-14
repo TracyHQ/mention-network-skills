@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "mention-network": {
+      "type": "http",
+      "url": "https://shopify-mcp-dev.mention.network/api/v1/mcp",
+      "headers": { "Authorization": "Bearer ${MENTION_NETWORK_KEY}" }
+    }
+  }
+}

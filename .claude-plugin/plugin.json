@@ -1,0 +1,9 @@
+{
+  "name": "create-visibility-report",
+  "version": "0.1.0",
+  "description": "Standalone Mention Network create-visibility-report skill — asks for a Shopify store + product and produces an AI Visibility Report via the Mention Network MCP (backend-run, or self-collected with the Claude Agent SDK / a vendor CLI / an API key / the browser), optionally rendering a branded PDF. Portable: drop this folder into any Claude host.",
+  "author": {
+    "name": "Mention Network"
+  },
+  "homepage": "https://mention.network"
+}

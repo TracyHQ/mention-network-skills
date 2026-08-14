@@ -1,0 +1,134 @@
+<style>{{{css}}}</style>
+<!-- PAGE 1 — Visibility: subject + verdict + market position.
+     The section opens OUTSIDE .page so an audit-only report prints no blank sheet. -->
+{{#visibility}}
+<div class="page">
+  <h1>AI Visibility Report</h1>
+  <div class="card">
+    <div class="eyebrow">REPORT FOR</div>
+    <div><strong>{{subject.shopName}}</strong> · {{subject.shopDomain}}</div>
+    <div class="subject-meta">{{subject.product.title}} — {{subject.product.vendor}} · {{subject.product.productType}} · {{subject.product.priceDisplay}}</div>
+    <div class="subject-meta">{{subject.locationCity}}, {{subject.locationCountry}} · {{subject.language}}</div>
+  </div>
+
+  <div class="card" style="display:flex;align-items:center;gap:28px">
+    <svg class="gauge" width="120" height="120" viewBox="0 0 120 120">
+      <circle class="bg" cx="60" cy="60" r="54" fill="none" stroke-width="12"/>
+      <circle class="fg" cx="60" cy="60" r="54" fill="none" stroke-width="12"
+              transform="rotate(-90 60 60)" stroke-dasharray="{{gauge.dash}}"/>
+      <text class="val" x="60" y="58" text-anchor="middle">{{verdict.score}}%</text>
+      <text class="lab" x="60" y="76" text-anchor="middle">{{verdict.tier}}</text>
+    </svg>
+    <div>
+      <div class="eyebrow">VISIBILITY SCORE</div>
+      <div style="font-size:16px;font-weight:700">{{verdict.title}}</div>
+      <div class="muted" style="font-size:13px">{{verdict.summary}}</div>
+      <div style="margin-top:8px">Coverage {{verdict.coverage.count}}/{{verdict.coverage.total}} · Avg position #{{verdict.avgPosition}}</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">MARKET POSITION</div>
+    <div class="ladder">
+      {{#marketPosition.competitors}}
+      <div class="row {{#isOwnShop}}you{{/isOwnShop}}">
+        <span>#{{rank}}</span>
+        {{#logoUrl}}<img class="logo" src="{{logoUrl}}"/>{{/logoUrl}}
+        {{^logoUrl}}<span class="logo logo-fallback">{{initials}}</span>{{/logoUrl}}
+        <span class="name">{{name}} {{#isOwnShop}}<span class="you-chip">YOUR STORE</span>{{/isOwnShop}}</span>
+        <span>{{covText}}</span>
+        <span class="offer {{#priceCell.na}}na{{/priceCell.na}}" title="{{priceCell.text}}">{{priceCell.text}}</span>
+        <span class="offer {{#shipCell.na}}na{{/shipCell.na}}" title="{{shipCell.text}}">{{shipCell.text}}</span>
+        <span class="bar"><span class="bar-fill {{^isOwnShop}}neutral{{/isOwnShop}}" style="width:{{sovBarPct}}%"></span></span>
+        <span class="pct">{{sovText}}</span>
+      </div>
+      {{/marketPosition.competitors}}
+    </div>
+    <div class="muted" style="margin-top:9px;font-size:13px">{{marketPosition.takeaway}}</div>
+  </div>
+  <div class="footer"><span class="slogan">Get mentioned. Get bought.</span><span>www.mention.network · Report #{{reportNumber}}</span></div>
+</div>
+
+<!-- PAGE 2 — Visibility: chatbot + search intent -->
+<div class="page">
+  <div class="card">
+    <div class="eyebrow">AI CHATBOT VISIBILITY</div>
+    <div class="ladder">
+      {{#chatbotVisibility.platforms}}
+      <div class="row {{^statusOk}}miss{{/statusOk}}">
+        <img class="logo" src="{{{logoDataUri}}}"/>
+        <span class="name">{{displayName}}</span>
+        {{#statusOk}}<span class="pill ok">✓ Mentioned</span>{{/statusOk}}
+        {{^statusOk}}<span class="pill no">✕ Not Mentioned</span>{{/statusOk}}
+        <span class="bar"><span class="bar-fill" style="width:{{barPct}}%"></span></span>
+        <span class="pct">{{pctText}}</span>
+        <span class="pct">{{rankText}}</span>
+      </div>
+      {{/chatbotVisibility.platforms}}
+    </div>
+    <div class="muted" style="margin-top:9px;font-size:13px">{{chatbotVisibility.takeaway}}</div>
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">SEARCH INTENT — {{searchIntent.won}}/{{searchIntent.total}} questions you win</div>
+    <div class="ladder">
+      {{#searchIntent.intents}}
+      <div class="row {{^statusOk}}miss{{/statusOk}}">
+        <span class="name">{{label}}<br><span class="muted" style="font-weight:400;font-size:12px">"{{questionText}}"</span></span>
+        {{#statusOk}}<span class="pill ok">✓</span>{{/statusOk}}{{^statusOk}}<span class="pill no">✕</span>{{/statusOk}}
+        <span>{{covText}}</span>
+        <span class="bar"><span class="bar-fill" style="width:{{barPct}}%"></span></span>
+        <span class="pct">{{pctText}}</span>
+        <span class="pct">{{rankText}}</span>
+      </div>
+      {{/searchIntent.intents}}
+    </div>
+    <div class="muted" style="margin-top:9px;font-size:13px">{{searchIntent.takeaway}}</div>
+  </div>
+  <div class="footer"><span class="slogan">Get mentioned. Get bought.</span><span>www.mention.network</span></div>
+</div>
+{{/visibility}}
+
+<!-- PAGE 3 — Website Audit -->
+{{#audit}}
+<div class="page">
+  <h1>Website Audit</h1>
+  <div class="card">
+    <div class="eyebrow">AUDIT SCORE — {{verdict}}</div>
+    <!-- score is 0-100 (weighted), NOT a count of the 40 criteria — that is `coverage`. -->
+    <div style="font-size:28px;font-weight:700">{{score}}/100 <span class="muted" style="font-size:14px">· {{coverage.scored}}/{{coverage.totalDefined}} criteria</span></div>
+    <div class="muted" style="font-size:13px">{{summary}}</div>
+  </div>
+  <div class="card">
+    <div class="eyebrow">FACTORS</div>
+    {{#factors}}
+    <div class="factor">
+      <div style="display:flex;justify-content:space-between">
+        <strong>{{#label}}{{label}}{{/label}}{{^label}}{{key}}{{/label}}</strong><span class="muted">weight {{weightPct}}% · {{scoreText}}</span>
+      </div>
+      <div class="bar" style="width:100%"><span class="bar-fill" style="width:{{scoreBarPct}}%"></span></div>
+      <div class="muted" style="font-size:12px">{{summary}}</div>
+      {{#subGroups}}<div class="muted" style="font-size:12px;padding-left:12px">• {{label}} — {{scoreText}}</div>{{/subGroups}}
+    </div>
+    {{/factors}}
+  </div>
+  <div class="footer"><span class="slogan">Get mentioned. Get bought.</span><span>www.mention.network · Audit #{{auditNumber}}</span></div>
+</div>
+
+<!-- PAGE 4 — Top priorities -->
+<div class="page">
+  <div class="card">
+    <div class="eyebrow">TOP PRIORITIES</div>
+    {{#topPriorities}}
+    <div class="priority">
+      <div style="display:flex;gap:8px;align-items:center">
+        <span class="chip {{impactClass}}">{{impact}}</span><strong>{{title}}</strong><span class="muted">({{factor}})</span>
+      </div>
+      <div class="muted" style="font-size:12px;margin-top:4px">{{whatIsThis}}</div>
+      <div style="font-size:12px;margin-top:2px">{{diagnosis}}</div>
+    </div>
+    {{/topPriorities}}
+  </div>
+  <div class="footer"><span class="slogan">Get mentioned. Get bought.</span><span>www.mention.network</span></div>
+</div>
+{{/audit}}

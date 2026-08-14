@@ -1,0 +1,42 @@
+@page { size: A4; margin: 0; }
+* { box-sizing: border-box; margin: 0; }
+body { font-family: Inter, -apple-system, sans-serif; color: #303030; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.page { width: 210mm; min-height: 297mm; padding: 16mm 14mm; background: #fff; page-break-after: always; position: relative; }
+.page:last-child { page-break-after: auto; }
+h1 { font-size: 24px; font-weight: 700; }
+.eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .5px; color: #8a8a8a; }
+.muted { color: #616161; } .na { color: #b3bbc4; }
+/* PRICE/SHIPPING = nguyên văn AI nói (FR-6.6), nên độ dài KHÔNG đoán trước được:
+   đo trên dữ liệu thật có chuỗi 149 ký tự ("Prime Members: Free shipping on all...").
+   Không kẹp thì một dòng đó kéo cao cả hàng và đẩy bảng sang trang mới. Kẹp 2 dòng
+   cho khớp PDF (MoneyCell maxLines 2); title giữ lại full text khi hover bản HTML. */
+.offer { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+         overflow: hidden; text-overflow: ellipsis; }
+.card { border: 1px solid #e3e3e3; border-radius: 12px; padding: 20px; margin-top: 16px; }
+.subject-meta { color: #616161; font-size: 13px; }
+/* gauge (svg) */
+.gauge circle.bg { stroke: #e3e3e3; } .gauge circle.fg { stroke: #005BD3; stroke-linecap: round; }
+.gauge .val { font-size: 28px; font-weight: 700; } .gauge .lab { font-size: 11px; fill: #8a8a8a; }
+/* ladder rows */
+.ladder { display: flex; flex-direction: column; gap: 4px; }
+.row { display: flex; align-items: center; gap: 14px; padding: 8px 10px; border-radius: 8px; }
+.row.you { border: 1px solid #005BD3; } .row.miss { background: #8e0b210a; }
+.logo { width: 26px; height: 26px; border-radius: 7px; border: 1px solid #eef0f3; object-fit: contain; background: #fff; }
+.logo-fallback { display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #616161; }
+.name { flex: 1; font-size: 14px; font-weight: 600; }
+.bar { width: 140px; height: 12px; border-radius: 999px; background: #f1f1f1; overflow: hidden; }
+.bar-fill { display: block; height: 12px; border-radius: 999px; background: #005BD3; }
+.bar-fill.neutral { background: #c9cccf; }
+.pct { width: 46px; text-align: right; font-size: 13px; font-weight: 700; }
+.pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 4px 9px; font-size: 12px; font-weight: 600; }
+.pill.ok { background: #cdfed4; color: #014b40; } .pill.no { background: #fee8eb; color: #8e0b21; }
+.you-chip { background: #eaf4ff; color: #005BD3; border-radius: 999px; padding: 4px 9px; font-size: 10px; font-weight: 700; }
+/* audit */
+.chip { border-radius: 6px; padding: 2px 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.chip.critical { background: #fee8eb; color: #8e0b21; } .chip.high { background: #fff1e3; color: #5e4200; }
+.chip.medium { background: #eaf4ff; color: #005BD3; } .chip.low { background: #f1f1f1; color: #616161; }
+.factor { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; border-top: 1px solid #ececec; }
+.priority { padding: 10px 0; border-top: 1px solid #ececec; }
+/* footer */
+.footer { position: absolute; left: 0; right: 0; bottom: 0; background: #1a1d29; color: #fff; padding: 14px 14mm; display: flex; justify-content: space-between; font-size: 11px; }
+.footer .slogan { font-weight: 700; }
